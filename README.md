@@ -1,73 +1,145 @@
 # Mild — Know Me More
 
-Single-page personal site: Hero → Profile Card + dynamic Project Cards → Contact.
-Public content is fully database-driven. Stack: Next.js, TypeScript, Tailwind,
-**Neon** (Postgres), **NextAuth** (admin login), **Vercel Blob** (image storage).
+Single-page personal site: Hero → Profile Card + dynamic Project Cards → Contact,
+with a password-protected admin area for editing everything without touching code.
 
-## What's in this pass
-
-- `schema.sql` — plain Postgres schema for Neon (profiles, projects,
-  project_images, social_links, site_settings).
-- `lib/db.ts` — the Neon connection (tagged-template SQL, server-only).
-- `lib/data.ts` — public read functions (`getProfile`, `getPublishedProjects`,
-  `getSiteSettings`) plus the admin-only writes the editors will use
-  (`upsertProfile`, `reorderProjects`, `getAllProjects`).
-- `lib/auth.ts` + `middleware.ts` + `app/api/auth/[...nextauth]/route.ts` —
-  single-admin login (you), every `/admin/*` route requires it.
-- `app/api/upload/route.ts` — image upload endpoint (Vercel Blob), checked
-  against your session server-side.
-- `app/page.tsx` + `components/` — the public single-page site.
-
-**Not built yet:** the actual `/admin` pages (login form, dashboard, the
-Projects/Profile/Settings editors with the upload button and drag-to-reorder
-UI). That's the next step — see the checklist below.
+Stack: Next.js 14 (App Router), TypeScript, Tailwind, **Neon** (Postgres),
+**NextAuth** (admin login), **Vercel Blob** (image storage).
 
 ## Setup
 
-1. **Database** — create a project at neon.tech, copy its connection string
-   into `.env.local` as `DATABASE_URL`, then run `schema.sql` against it
-   (Neon's SQL editor, or `psql "$DATABASE_URL" -f schema.sql`).
-2. **Your login** — pick an email for `ADMIN_EMAIL`. Generate your password
-   hash: `npm install`, then `npm run hash-password -- "your-password"`, and
-   paste the output into `ADMIN_PASSWORD_HASH`. Set `NEXTAUTH_SECRET` to the
-   output of `openssl rand -base64 32`.
-3. **Image storage** — in your Vercel project, add a Blob store (Storage tab),
-   then copy its token into `BLOB_READ_WRITE_TOKEN`.
-4. Copy `.env.example` to `.env.local` and fill in all four sections.
-5. Add one row to `profiles` by hand for now (until the Profile editor
-   exists), so the homepage has something to render:
-   ```sql
-   insert into profiles (name, display_name, title, bio)
-   values ('Phassaree Prasai', 'Mild', 'Multimedia Designer',
-           'Creative designer exploring visual identity, motion, and visual storytelling.');
-   ```
-6. `npm run dev`, open `http://localhost:3000`.
+You need Node 18 or newer.
 
-## How to test what's here so far
+### 1. Install
 
-- With zero rows in `projects`, the page still renders (empty state instead
-  of breaking).
-- Insert a project with `status = 'published'` → appears on refresh; set it
-  to `'draft'` → disappears.
-- A project with no `external_url` renders but isn't clickable.
-- Visiting `/admin` right now redirects you to a login page that doesn't
-  exist yet (next step below) — that redirect itself confirms the
-  authentication gate is working.
+```bash
+npm install
+```
 
-## Next steps (in order)
+### 2. Environment
 
-1. **`/admin/login` page** — a simple email/password form calling NextAuth's
-   `signIn("credentials", ...)`.
-2. **`/admin` dashboard shell** — layout + nav (Dashboard, Projects, Profile,
-   Settings), all behind the middleware you already have.
-3. **Profile editor** — form bound to `upsertProfile`, with the image upload
-   button wired to `/api/upload`.
-4. **Projects list + editor** — table of all projects (`getAllProjects`),
-   an add/edit form (title, slug, description, category, year, external URL,
-   cover image upload, featured toggle, draft/publish), delete.
-5. **Drag-and-drop reordering** — on the Projects list, calling
-   `reorderProjects` on drop.
-6. **Settings editor** — phone/email/Instagram, bound to `site_settings`.
-7. Deploy to Vercel, connect the same Neon + Blob env vars there.
+```bash
+cp .env.example .env.local
+```
 
-Tell me which of these to build next and I'll do that one.
+Then fill in `.env.local`:
+
+- **`DATABASE_URL`** — Neon dashboard → your project → Connection string (the
+  pooled one).
+- **`NEXTAUTH_SECRET`** — generate with:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  ```
+- **`NEXTAUTH_URL`** — `http://localhost:3000` locally; your real domain on Vercel.
+- **`ADMIN_EMAIL`** — whatever address you want to log in with.
+- **`ADMIN_PASSWORD_HASH`** — generate with:
+  ```bash
+  npm run hash-password -- "your-password"
+  ```
+  The script prints two versions. Use the **escaped** one in `.env.local` and the
+  **raw** one in the Vercel dashboard. This matters — see the warning below.
+- **`BLOB_READ_WRITE_TOKEN`** — Vercel dashboard → Storage → Blob → create a
+  store → copy the token from its `.env.local` tab. Everything works without
+  this except uploading images.
+
+> **The `$` signs in the password hash must be escaped in `.env.local`.**
+> A bcrypt hash looks like `$2a$10$…`, and the library Next uses to read `.env`
+> files treats `$name` as a variable to substitute. An unescaped hash is
+> silently chopped down to a fragment and every login fails with no error that
+> points at the cause. Writing it as `"\$2a\$10\$…"` is what makes it survive.
+> In the Vercel dashboard there is no `.env` parsing, so paste the raw hash there.
+
+### 3. Database
+
+```bash
+npm run db:setup   # creates the tables from schema.sql
+npm run db:seed    # adds a starter profile row so the homepage renders
+npm run db:check   # lists the tables and row counts
+```
+
+`db:setup` and `db:seed` are both safe to re-run.
+
+### 4. Run it
+
+```bash
+npm run dev
+```
+
+- Public site: http://localhost:3000
+- Admin: http://localhost:3000/admin
+
+> If the site ever renders with no styling at all, delete the `.next` folder and
+> restart. It means a production build and the dev server got mixed up in there.
+
+## Deploying
+
+Import the repo at vercel.com — no config files needed, Vercel detects Next.js
+on its own. Then in the project's Settings → Environment Variables, add the same
+five values from `.env.local` (raw hash, not escaped), plus the Blob token.
+
+`DATABASE_URL` has to be set for the build itself, not just at runtime — the
+homepage is prerendered at build time and reads from the database.
+
+## Project layout
+
+```
+app/
+  layout.tsx, globals.css, page.tsx   the public site
+  admin/
+    login/page.tsx                    sign-in form (outside the auth guard)
+    (protected)/                      everything behind the login
+      layout.tsx                      session check + nav
+      page.tsx                        dashboard
+      projects/                       list, new, [id] editor
+      profile/page.tsx
+      settings/page.tsx
+  api/
+    auth/[...nextauth]/route.ts       NextAuth handler
+    upload/route.ts                   image upload → Vercel Blob
+components/            public site components
+components/admin/      admin forms, image upload, nav
+lib/
+  db.ts                Neon connection (server-only)
+  data.ts              all database reads and writes
+  auth.ts              NextAuth config (single admin account)
+  actions.ts           server actions the admin forms post to
+types/database.ts      row types
+scripts/               hash-password, db setup/seed/check
+middleware.ts          gates /admin/*
+schema.sql             the database schema
+```
+
+`(protected)` is a route group: it decides which pages get the auth layout
+without appearing in the URL. `/admin/login` sits outside it deliberately — if
+it were inside, the login page would redirect to itself forever.
+
+## How the admin works
+
+- **Dashboard** — counts, plus a to-do list of anything that would make the
+  public page look unfinished.
+- **Projects** — every project, in site order. `↑`/`↓` reorder, the status chip
+  toggles draft/published in one click, `Edit` opens the full editor.
+- **Project editor** — all fields, cover image upload, a gallery for extra
+  images, and delete (two clicks).
+- **Profile** — the card on the homepage, including the photo.
+- **Settings** — phone, email, Instagram. Blank fields are hidden on the site.
+
+Saving anything refreshes the public page immediately.
+
+## Security notes
+
+- One account, defined by two env vars. There's no user table and no signup.
+- `/admin/*` is gated by `middleware.ts`, and the protected layout and every
+  server action check the session again independently. Middleware is a
+  convenience, not the boundary.
+- Never commit `.env.local` — it holds the database password. `.gitignore`
+  already covers it.
+
+## Known follow-ups
+
+- **Next 14 is end-of-life.** The installed 14.2.35 has the fix for the
+  middleware auth-bypass CVE, but the remaining `npm audit` advisories are only
+  fixed in 15.5.x. Upgrading means Next 15 + React 19 and re-testing NextAuth.
+- Reordering uses buttons rather than drag-and-drop.
+- `social_links` has a table and a read function but no editor yet; nothing
+  renders it.

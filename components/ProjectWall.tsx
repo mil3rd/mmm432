@@ -19,9 +19,9 @@ export default function ProjectWall({ projects }: { projects: Project[] }) {
   }
 
   return (
-    <section className="px-6 py-16 sm:px-10 lg:px-16">
+    <section className="bg-[#EFEEEB] px-6 py-16 sm:px-10 lg:px-16">
       <p className="mb-10 font-body text-xs tracking-wide text-muted">
-        Selected work — {projects.length} project{projects.length === 1 ? "" : "s"}
+        More work — {projects.length} project{projects.length === 1 ? "" : "s"}
       </p>
       <div className="flex flex-wrap items-start justify-center gap-x-10 gap-y-16 lg:justify-start">
         {projects.map((project, i) => (

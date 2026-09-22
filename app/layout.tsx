@@ -16,7 +16,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Mild — Know Me More",
-  description: "Phassaree Prasai, Multimedia Designer. Know me more.",
+  description: "Phassaree Prasai, Assumption College Thonburi. Know me more.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
