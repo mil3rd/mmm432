@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Profile } from "@/types/database";
 
 const WORDMARK = "Know me more.";
@@ -17,17 +18,23 @@ function Cross({ className }: { className?: string }) {
   );
 }
 
-function Crosshair({ className }: { className?: string }) {
+// The crosshair doubles as the way in to Admin. It reads as part of the
+// mark-making either way, so it stays quiet for visitors while giving Mild a
+// target she can hit from any page without remembering a URL.
+function AdminMark({ className }: { className?: string }) {
   return (
-    <svg
-      aria-hidden
-      viewBox="0 0 32 32"
-      className={`pointer-events-none absolute h-6 w-6 text-ink sm:h-7 sm:w-7 ${className}`}
+    <Link
+      href="/admin"
+      aria-label="Admin"
+      title="Admin"
+      className={`absolute text-ink outline-none transition-colors hover:text-red focus-visible:text-red ${className}`}
     >
-      <circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M16 1v7M16 24v7M1 16h7M24 16h7" stroke="currentColor" strokeWidth="1.4" />
-      <circle cx="16" cy="16" r="4.5" fill="currentColor" />
-    </svg>
+      <svg viewBox="0 0 32 32" className="h-6 w-6 sm:h-7 sm:w-7">
+        <circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M16 1v7M16 24v7M1 16h7M24 16h7" stroke="currentColor" strokeWidth="1.4" />
+        <circle cx="16" cy="16" r="4.5" fill="currentColor" />
+      </svg>
+    </Link>
   );
 }
 
@@ -65,7 +72,7 @@ export default function Hero({ profile }: { profile: Profile }) {
           Welcome
         </p>
 
-        <Crosshair className="right-6 top-8 sm:right-10 lg:right-16" />
+        <AdminMark className="right-6 top-8 sm:right-10 lg:right-16" />
 
         <div className="relative mt-4 flex min-h-[27vw] items-center justify-center sm:mt-1 lg:min-h-[15rem]">
           {/* The red panel is the only saturated thing on the page. Its height

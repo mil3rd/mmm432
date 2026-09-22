@@ -20,15 +20,15 @@ function LoginForm() {
 
     const form = new FormData(event.currentTarget);
     const result = await signIn("credentials", {
-      email: form.get("email"),
+      username: form.get("username"),
       password: form.get("password"),
       redirect: false,
     });
 
     if (result?.error) {
       // Deliberately vague: saying which half was wrong tells an attacker
-      // whether the email is real.
-      setError("That email and password don't match.");
+      // whether the username is real.
+      setError("That username and password don't match.");
       setBusy(false);
       return;
     }
@@ -46,10 +46,10 @@ function LoginForm() {
 
       <div className="mt-8 space-y-4">
         <label className="block">
-          <span className="font-body text-xs tracking-wide text-muted">Email</span>
+          <span className="font-body text-xs tracking-wide text-muted">Username</span>
           <input
-            name="email"
-            type="email"
+            name="username"
+            type="text"
             required
             autoComplete="username"
             className="mt-1.5 w-full rounded-sm border border-line bg-card px-3 py-2 font-body text-sm text-ink outline-none transition-colors focus:border-ink"

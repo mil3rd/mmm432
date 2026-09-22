@@ -31,7 +31,8 @@ Then fill in `.env.local`:
   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
   ```
 - **`NEXTAUTH_URL`** — `http://localhost:3000` locally; your real domain on Vercel.
-- **`ADMIN_EMAIL`** — whatever address you want to log in with.
+- **`ADMIN_USERNAME`** — whatever name you want to log in with. It is a
+  plain username, not an email address.
 - **`ADMIN_PASSWORD_HASH`** — generate with:
   ```bash
   npm run hash-password -- "your-password"
@@ -129,11 +130,23 @@ Saving anything refreshes the public page immediately.
 ## Security notes
 
 - One account, defined by two env vars. There's no user table and no signup.
+- The crosshair at the top right of the homepage links to `/admin`. It's an
+  unadvertised entrance, not a security measure — the login still gates it.
 - `/admin/*` is gated by `middleware.ts`, and the protected layout and every
   server action check the session again independently. Middleware is a
   convenience, not the boundary.
 - Never commit `.env.local` — it holds the database password. `.gitignore`
   already covers it.
+
+## Changing the login
+
+```bash
+npm run hash-password -- "new-password"
+```
+
+Paste the escaped line into `.env.local` (and the raw hash into Vercel), and
+edit `ADMIN_USERNAME` beside it. Restart `npm run dev` — env vars are read at
+boot, so a running server keeps the old credentials.
 
 ## Known follow-ups
 

@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
 // This app has exactly one user: Mild. Rather than a full user table,
-// her login is two env vars — ADMIN_EMAIL and a bcrypt hash of her
+// her login is two env vars — ADMIN_USERNAME and a bcrypt hash of her
 // password (ADMIN_PASSWORD_HASH). See the README for how to generate
 // the hash.
 export const authOptions: NextAuthOptions = {
@@ -13,20 +13,24 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "Admin",
       credentials: {
-        email: { label: "Email", type: "text" },
+        username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.username || !credentials?.password) return null;
 
-        const emailMatches = credentials.email === process.env.ADMIN_EMAIL;
-        const passwordMatches = await bcrypt.compare(
-          credentials.password,
-          process.env.ADMIN_PASSWORD_HASH ?? ""
-        );
+        // If either env var is missing the account doesn't exist, so nothing
+        // can sign in. Without this a misconfigured deploy would compare
+        // against undefined and hand out a session on an empty password.
+        const expectedUsername = process.env.ADMIN_USERNAME;
+        const expectedHash = process.env.ADMIN_PASSWORD_HASH;
+        if (!expectedUsername || !expectedHash) return null;
 
-        if (emailMatches && passwordMatches) {
-          return { id: "admin", email: credentials.email, name: "Mild" };
+        const usernameMatches = credentials.username === expectedUsername;
+        const passwordMatches = await bcrypt.compare(credentials.password, expectedHash);
+
+        if (usernameMatches && passwordMatches) {
+          return { id: "admin", name: expectedUsername };
         }
         return null;
       },
