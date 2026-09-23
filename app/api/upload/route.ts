@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { list } from "@vercel/blob";
+import { del, list } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { authOptions } from "@/lib/auth";
 
@@ -131,5 +131,34 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ ok: true, storeId });
+  // Listing proves the token is real; it does not prove the store accepts
+  // writes. A suspended or over-quota store still lists fine and then fails
+  // every upload, and the browser can't read that failure: an error from
+  // blob.vercel-storage.com carries no CORS headers, so the SDK only sees
+  // "Failed to fetch" and retries it ten times. Write one tiny object here
+  // with the server token and relay exactly what Vercel says.
+  const probePath = `portfolio/.write-probe-${Date.now()}.txt`;
+  const probe = await fetch(`https://blob.vercel-storage.com/${probePath}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, "x-api-version": "7", "x-content-type": "text/plain" },
+    body: "probe",
+  });
+  if (!probe.ok) {
+    const detail = (await probe.text()).slice(0, 400);
+    console.error("Blob write probe failed:", probe.status, detail);
+    return NextResponse.json(
+      {
+        error: `Store ${storeId} accepts reads but refuses writes. Vercel answered ${probe.status}: ${detail || "(no body)"} Open Storage in the Vercel dashboard and check the store's status and usage.`,
+      },
+      { status: 502 }
+    );
+  }
+  try {
+    const { url } = (await probe.json()) as { url: string };
+    await del(url, { token });
+  } catch (error) {
+    console.warn("Could not remove write probe:", error);
+  }
+
+  return NextResponse.json({ ok: true, storeId, writes: "ok" });
 }
