@@ -12,6 +12,8 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 // parallel parts instead of one long request.
 const MULTIPART_OVER_BYTES = 5 * 1024 * 1024;
 
+const UPLOAD_TIMEOUT_MS = 60 * 1000;
+
 export class UploadError extends Error {}
 
 export type UploadStage = "shrinking" | "uploading";
@@ -50,6 +52,11 @@ export async function uploadImage(
       handleUploadUrl: "/api/upload",
       contentType: file.type,
       multipart: file.size > MULTIPART_OVER_BYTES,
+      // The SDK retries a refused PUT ten times with growing backoff, close
+      // to twenty minutes, before it gives up. Files are under 1MB after
+      // shrinking, so anything still running after this is not going to
+      // succeed; stop and let explain() report the real reason.
+      abortSignal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
     });
     return blob.url;
   } catch (error) {

@@ -146,6 +146,17 @@ export async function GET() {
   if (!probe.ok) {
     const detail = (await probe.text()).slice(0, 400);
     console.error("Blob write probe failed:", probe.status, detail);
+    // The one we have actually hit: a store created with "Private" access.
+    // The homepage shows images by plain URL, so this site needs a public
+    // store; there is no setting that flips an existing store.
+    if (/private store|private access/i.test(detail)) {
+      return NextResponse.json(
+        {
+          error: `Blob store ${storeId} was created with Private access, and this site needs a Public store (images are shown by URL). In Vercel, open Storage, create a new Blob store with access set to Public, connect it to this project so its token replaces BLOBv1_READ_WRITE_TOKEN, then redeploy.`,
+        },
+        { status: 502 }
+      );
+    }
     return NextResponse.json(
       {
         error: `Store ${storeId} accepts reads but refuses writes. Vercel answered ${probe.status}: ${detail || "(no body)"} Open Storage in the Vercel dashboard and check the store's status and usage.`,
