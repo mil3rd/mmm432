@@ -20,14 +20,14 @@ const ALLOWED_TYPES = [
 ];
 
 const NOT_CONFIGURED =
-  "Image storage isn't configured yet. Add BLOBv1_READ_WRITE_TOKEN from your Vercel Blob store to .env.local (and to the Vercel project's environment variables, then redeploy).";
+  "Image storage isn't configured yet. Add BLOB_READ_WRITE_TOKEN from your Vercel Blob store to .env.local (and to the Vercel project's environment variables, then redeploy).";
 
-// The store is connected to the Vercel project under the prefix "BLOBv1", so
-// that is the name Vercel injects. The plain BLOB_ name is accepted as a
-// fallback for local setups, but it must not win over BLOBv1_: production
-// still carries a stale BLOB_READ_WRITE_TOKEN from an earlier store.
+// Vercel injects the token under the prefix chosen when the store was
+// connected. The current public store uses the default, BLOB_. The BLOBv1_
+// name belonged to the earlier private store and is only a fallback; delete
+// that variable in Vercel once the new store is connected.
 function getBlobToken(): string | undefined {
-  return process.env.BLOBv1_READ_WRITE_TOKEN || process.env.BLOB_READ_WRITE_TOKEN;
+  return process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOBv1_READ_WRITE_TOKEN;
 }
 
 // Image uploads go straight from the browser to Vercel Blob. This route never
@@ -111,7 +111,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          "BLOBv1_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
+          "BLOB_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
       },
       { status: 502 }
     );
@@ -125,7 +125,7 @@ export async function GET() {
     console.error("Blob token check failed:", error);
     return NextResponse.json(
       {
-        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOBv1_READ_WRITE_TOKEN and redeploy.`,
+        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOB_READ_WRITE_TOKEN and redeploy.`,
       },
       { status: 502 }
     );
@@ -152,7 +152,7 @@ export async function GET() {
     if (/private store|private access/i.test(detail)) {
       return NextResponse.json(
         {
-          error: `Blob store ${storeId} was created with Private access, and this site needs a Public store (images are shown by URL). In Vercel, open Storage, create a new Blob store with access set to Public, connect it to this project so its token replaces BLOBv1_READ_WRITE_TOKEN, then redeploy.`,
+          error: `Blob store ${storeId} was created with Private access, and this site needs a Public store (images are shown by URL). In Vercel, open Storage, create a new Blob store with access set to Public, connect it to this project so Vercel sets BLOB_READ_WRITE_TOKEN, delete the old BLOBv1_ variables, then redeploy.`,
         },
         { status: 502 }
       );
