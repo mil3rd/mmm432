@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { list } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { authOptions } from "@/lib/auth";
 
@@ -80,14 +81,45 @@ export async function POST(request: NextRequest) {
 
 // Readiness check. The Blob SDK replaces this route's error responses with
 // a generic "Failed to retrieve the client token", so when an upload fails
-// the browser asks here to find out which of the two setup problems it is.
+// the browser asks here what is actually wrong. This does more than look for
+// the env var: the upload token is signed locally without ever contacting
+// Vercel, so a wrong, revoked or mangled token only shows up when the bytes
+// are sent. Listing one blob is the cheapest way to make the store say so.
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) {
     return NextResponse.json({ error: NOT_CONFIGURED }, { status: 501 });
   }
-  return NextResponse.json({ ok: true });
+
+  // A token pasted with its quotes, or with a trailing newline, still counts
+  // as "set" but can never work. Name that before blaming Vercel.
+  if (!/^vercel_blob_rw_[A-Za-z0-9]+_[A-Za-z0-9]+$/.test(token)) {
+    return NextResponse.json(
+      {
+        error:
+          "BLOB_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
+      },
+      { status: 502 }
+    );
+  }
+  const storeId = token.split("_")[3];
+
+  try {
+    await list({ limit: 1, token });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message.replace(/^Vercel Blob: /, "") : "unknown error";
+    console.error("Blob token check failed:", error);
+    return NextResponse.json(
+      {
+        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOB_READ_WRITE_TOKEN and redeploy.`,
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({ ok: true, storeId });
 }

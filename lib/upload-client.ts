@@ -33,19 +33,28 @@ export async function uploadImage(file: File): Promise<string> {
 }
 
 // The SDK collapses every non-2xx from /api/upload into one generic message,
-// so ask the route directly what is wrong before giving up.
+// so ask the route what is wrong before giving up. If the route says the
+// token is fine, the failure happened on the direct browser → Blob leg, and
+// the SDK's own message for that is the most specific thing we have.
 async function explain(error: unknown): Promise<string> {
+  let response: Response;
   try {
-    const response = await fetch("/api/upload", { method: "GET" });
-    if (!response.ok) {
-      const result = (await response.json()) as { error?: string };
-      if (result.error) return result.error;
-    }
+    response = await fetch("/api/upload", { method: "GET" });
   } catch {
     return "Upload failed — check your connection and try again.";
   }
-  const message = error instanceof Error ? error.message : "";
+  if (!response.ok) {
+    try {
+      const result = (await response.json()) as { error?: string };
+      if (result.error) return result.error;
+    } catch {
+      // fall through to the SDK's message
+    }
+  }
+  const message = error instanceof Error ? error.message.replace(/^Vercel Blob: /, "") : "";
   if (/content.?type/i.test(message)) return "That file type isn't allowed.";
   if (/size|too large|413/i.test(message)) return "That image is over 10MB. Export it smaller and try again.";
-  return "Upload failed at the storage provider. Check the Blob token is valid.";
+  return message
+    ? `Upload failed at the storage provider: ${message}`
+    : "Upload failed at the storage provider. Check the Blob token is valid.";
 }
