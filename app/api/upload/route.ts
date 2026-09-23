@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { del, list } from "@vercel/blob";
+import { del, list, put } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { authOptions } from "@/lib/auth";
+import { getBlobToken } from "@/lib/blob-token";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -20,15 +21,7 @@ const ALLOWED_TYPES = [
 ];
 
 const NOT_CONFIGURED =
-  "Image storage isn't configured yet. Add BLOB_READ_WRITE_TOKEN from your Vercel Blob store to .env.local (and to the Vercel project's environment variables, then redeploy).";
-
-// Vercel injects the token under the prefix chosen when the store was
-// connected. The current public store uses the default, BLOB_. The BLOBv1_
-// name belonged to the earlier private store and is only a fallback; delete
-// that variable in Vercel once the new store is connected.
-function getBlobToken(): string | undefined {
-  return process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOBv1_READ_WRITE_TOKEN;
-}
+  "Image storage isn't configured yet. Add BLOBv1_READ_WRITE_TOKEN from your Vercel Blob store to .env.local (and to the Vercel project's environment variables, then redeploy).";
 
 // Image uploads go straight from the browser to Vercel Blob. This route never
 // sees the file; it only hands out a short-lived upload token.
@@ -37,6 +30,9 @@ function getBlobToken(): string | undefined {
 // receive a request body over 4.5MB, and the platform answers with a
 // plain-text 413 before the function even runs. Proxying the file through
 // here worked locally and failed in production for every phone photo.
+//
+// The store is private, so the browser uploads with access "private" and
+// the site reads images back through /api/image (see that route).
 //
 // The browser calls this route twice per upload, via the SDK:
 //   1. type "blob.generate-client-token"  — from the admin's browser; gated
@@ -74,9 +70,9 @@ export async function POST(request: NextRequest) {
         maximumSizeInBytes: MAX_UPLOAD_BYTES,
         addRandomSuffix: true,
       }),
-      // The browser already has the URL and saves it through the form, so
-      // there is nothing to record here. (This callback is also never reached
-      // in local dev — Vercel can't call back to localhost.)
+      // The browser already has the pathname and saves it through the form,
+      // so there is nothing to record here. (This callback is also never
+      // reached in local dev — Vercel can't call back to localhost.)
       onUploadCompleted: async () => {},
     });
     return NextResponse.json(result);
@@ -91,10 +87,11 @@ export async function POST(request: NextRequest) {
 
 // Readiness check. The Blob SDK replaces this route's error responses with
 // a generic "Failed to retrieve the client token", so when an upload fails
-// the browser asks here what is actually wrong. This does more than look for
-// the env var: the upload token is signed locally without ever contacting
-// Vercel, so a wrong, revoked or mangled token only shows up when the bytes
-// are sent. Listing one blob is the cheapest way to make the store say so.
+// the browser asks here what is actually wrong. It lists one blob (is the
+// token real?) and then writes and deletes a tiny private object (does the
+// store accept the writes we do?). The browser can't learn the latter on
+// its own: an error from blob.vercel-storage.com carries no CORS headers,
+// so the SDK only ever sees "Failed to fetch".
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -111,7 +108,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          "BLOB_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
+          "BLOBv1_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
       },
       { status: 502 }
     );
@@ -125,50 +122,28 @@ export async function GET() {
     console.error("Blob token check failed:", error);
     return NextResponse.json(
       {
-        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOB_READ_WRITE_TOKEN and redeploy.`,
+        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOBv1_READ_WRITE_TOKEN and redeploy.`,
       },
       { status: 502 }
     );
   }
 
-  // Listing proves the token is real; it does not prove the store accepts
-  // writes. A suspended or over-quota store still lists fine and then fails
-  // every upload, and the browser can't read that failure: an error from
-  // blob.vercel-storage.com carries no CORS headers, so the SDK only sees
-  // "Failed to fetch" and retries it ten times. Write one tiny object here
-  // with the server token and relay exactly what Vercel says.
-  const probePath = `portfolio/.write-probe-${Date.now()}.txt`;
-  const probe = await fetch(`https://blob.vercel-storage.com/${probePath}`, {
-    method: "PUT",
-    headers: { authorization: `Bearer ${token}`, "x-api-version": "7", "x-content-type": "text/plain" },
-    body: "probe",
-  });
-  if (!probe.ok) {
-    const detail = (await probe.text()).slice(0, 400);
-    console.error("Blob write probe failed:", probe.status, detail);
-    // The one we have actually hit: a store created with "Private" access.
-    // The homepage shows images by plain URL, so this site needs a public
-    // store; there is no setting that flips an existing store.
-    if (/private store|private access/i.test(detail)) {
-      return NextResponse.json(
-        {
-          error: `Blob store ${storeId} was created with Private access, and this site needs a Public store (images are shown by URL). In Vercel, open Storage, create a new Blob store with access set to Public, connect it to this project so Vercel sets BLOB_READ_WRITE_TOKEN, delete the old BLOBv1_ variables, then redeploy.`,
-        },
-        { status: 502 }
-      );
-    }
+  try {
+    const probe = await put(`portfolio/.write-probe-${Date.now()}.txt`, "probe", {
+      access: "private",
+      token,
+      addRandomSuffix: true,
+    });
+    await del(probe.url, { token }).catch((error) => console.warn("Could not remove write probe:", error));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message.replace(/^Vercel Blob: /, "") : "unknown error";
+    console.error("Blob write probe failed:", error);
     return NextResponse.json(
       {
-        error: `Store ${storeId} accepts reads but refuses writes. Vercel answered ${probe.status}: ${detail || "(no body)"} Open Storage in the Vercel dashboard and check the store's status and usage.`,
+        error: `Store ${storeId} accepts reads but refused a write: ${reason} Open Storage in the Vercel dashboard and check the store's status and usage.`,
       },
       { status: 502 }
     );
-  }
-  try {
-    const { url } = (await probe.json()) as { url: string };
-    await del(url, { token });
-  } catch (error) {
-    console.warn("Could not remove write probe:", error);
   }
 
   return NextResponse.json({ ok: true, storeId, writes: "ok" });

@@ -1,6 +1,7 @@
 "use client";
 
 import { upload } from "@vercel/blob/client";
+import { imagePathFor } from "./blob-token";
 import { shrinkImage } from "./shrink-image";
 
 // Keep in sync with MAX_UPLOAD_BYTES in app/api/upload/route.ts. Not imported
@@ -22,11 +23,15 @@ export interface UploadProgress {
   stage: UploadStage;
   /** bytes that will actually be sent (known once shrinking is done) */
   bytes: number;
+  /** 0–100 while uploading */
+  percent?: number;
 }
 
-// Sends an image straight from the browser to Vercel Blob and returns its
-// public URL. /api/upload only issues the token, so this is not subject to
-// Vercel's 4.5MB request-body limit on serverless functions.
+// Sends an image straight from the browser to Vercel Blob and returns the
+// path the site serves it from (/api/image/…). /api/upload only issues the
+// token, so this is not subject to Vercel's 4.5MB request-body limit on
+// serverless functions. The store is private, which is why the returned
+// value is an app path rather than the blob's own URL.
 //
 // The image is shrunk in the browser first (see shrink-image.ts); that is
 // what makes uploads fast. The 10MB limit applies to what is actually sent.
@@ -48,17 +53,19 @@ export async function uploadImage(
 
   try {
     const blob = await upload(`portfolio/${Date.now()}-${file.name}`, file, {
-      access: "public",
+      access: "private",
       handleUploadUrl: "/api/upload",
       contentType: file.type,
       multipart: file.size > MULTIPART_OVER_BYTES,
+      onUploadProgress: ({ percentage }) =>
+        onProgress?.({ stage: "uploading", bytes: file.size, percent: Math.round(percentage) }),
       // The SDK retries a refused PUT ten times with growing backoff, close
       // to twenty minutes, before it gives up. Files are under 1MB after
       // shrinking, so anything still running after this is not going to
       // succeed; stop and let explain() report the real reason.
       abortSignal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
     });
-    return blob.url;
+    return imagePathFor(blob.pathname);
   } catch (error) {
     throw new UploadError(await explain(error));
   }
@@ -66,7 +73,9 @@ export async function uploadImage(
 
 export function describe(progress: UploadProgress): string {
   const mb = (progress.bytes / (1024 * 1024)).toFixed(1);
-  return progress.stage === "shrinking" ? "Shrinking image…" : `Uploading ${mb} MB…`;
+  if (progress.stage === "shrinking") return "Shrinking image…";
+  const pct = progress.percent != null ? ` ${progress.percent}%` : "";
+  return `Uploading ${mb} MB…${pct}`;
 }
 
 // The SDK collapses every non-2xx from /api/upload into one generic message,

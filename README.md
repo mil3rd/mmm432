@@ -39,10 +39,11 @@ Then fill in `.env.local`:
   ```
   The script prints two versions. Use the **escaped** one in `.env.local` and the
   **raw** one in the Vercel dashboard. This matters — see the warning below.
-- **`BLOB_READ_WRITE_TOKEN`** — Vercel dashboard → Storage → Blob → the store
-  connected to this project → copy the token from its `.env.local` tab. The
-  store must be created with **Public** access; a private store refuses every
-  upload. Everything works without
+- **`BLOBv1_READ_WRITE_TOKEN`** — Vercel dashboard → Storage → Blob → the store
+  connected to this project (prefix `BLOBv1`) → copy the token from its
+  `.env.local` tab. The store is **private**: uploads are stored with private
+  access and the site serves them through `/api/image/…`, which is the value
+  saved in the database. Everything works without
   this except uploading images.
 
 > **The `$` signs in the password hash must be escaped in `.env.local`.**
@@ -98,7 +99,8 @@ app/
       settings/page.tsx
   api/
     auth/[...nextauth]/route.ts       NextAuth handler
-    upload/route.ts                   image upload → Vercel Blob
+    upload/route.ts                   upload token handshake → Vercel Blob
+    image/[...path]/route.ts          serves images from the private store
 components/            public site components
 components/admin/      admin forms, image upload, nav
 lib/
