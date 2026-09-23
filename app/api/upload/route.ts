@@ -20,7 +20,15 @@ const ALLOWED_TYPES = [
 ];
 
 const NOT_CONFIGURED =
-  "Image storage isn't configured yet. Add BLOB_READ_WRITE_TOKEN from your Vercel Blob store to .env.local (and to the Vercel project's environment variables, then redeploy).";
+  "Image storage isn't configured yet. Add BLOBv1_READ_WRITE_TOKEN from your Vercel Blob store to .env.local (and to the Vercel project's environment variables, then redeploy).";
+
+// The store is connected to the Vercel project under the prefix "BLOBv1", so
+// that is the name Vercel injects. The plain BLOB_ name is accepted as a
+// fallback for local setups, but it must not win over BLOBv1_: production
+// still carries a stale BLOB_READ_WRITE_TOKEN from an earlier store.
+function getBlobToken(): string | undefined {
+  return process.env.BLOBv1_READ_WRITE_TOKEN || process.env.BLOB_READ_WRITE_TOKEN;
+}
 
 // Image uploads go straight from the browser to Vercel Blob. This route never
 // sees the file; it only hands out a short-lived upload token.
@@ -37,7 +45,8 @@ const NOT_CONFIGURED =
 //      bytes land; carries no session cookie, verified by signature inside
 //      handleUpload instead.
 export async function POST(request: NextRequest) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  const token = getBlobToken();
+  if (!token) {
     return NextResponse.json({ error: NOT_CONFIGURED }, { status: 501 });
   }
 
@@ -59,6 +68,7 @@ export async function POST(request: NextRequest) {
     const result = await handleUpload({
       body,
       request,
+      token,
       onBeforeGenerateToken: async () => ({
         allowedContentTypes: ALLOWED_TYPES,
         maximumSizeInBytes: MAX_UPLOAD_BYTES,
@@ -90,7 +100,7 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = getBlobToken();
   if (!token) {
     return NextResponse.json({ error: NOT_CONFIGURED }, { status: 501 });
   }
@@ -101,7 +111,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          "BLOB_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
+          "BLOBv1_READ_WRITE_TOKEN is set but doesn't look like a Blob token. It should start with vercel_blob_rw_ and contain no quotes, spaces or line breaks. Re-paste it in Vercel and redeploy.",
       },
       { status: 502 }
     );
@@ -115,7 +125,7 @@ export async function GET() {
     console.error("Blob token check failed:", error);
     return NextResponse.json(
       {
-        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOB_READ_WRITE_TOKEN and redeploy.`,
+        error: `The Blob token in this deployment was rejected: ${reason} It belongs to store ${storeId}. In Vercel, open Storage, make sure that store still exists and is connected to this project, then copy its current token into BLOBv1_READ_WRITE_TOKEN and redeploy.`,
       },
       { status: 502 }
     );

@@ -39,8 +39,9 @@ Then fill in `.env.local`:
   ```
   The script prints two versions. Use the **escaped** one in `.env.local` and the
   **raw** one in the Vercel dashboard. This matters — see the warning below.
-- **`BLOB_READ_WRITE_TOKEN`** — Vercel dashboard → Storage → Blob → create a
-  store → copy the token from its `.env.local` tab. Everything works without
+- **`BLOBv1_READ_WRITE_TOKEN`** — Vercel dashboard → Storage → Blob → the store
+  connected to this project (prefix `BLOBv1`) → copy the token from its
+  `.env.local` tab. Everything works without
   this except uploading images.
 
 > **The `$` signs in the password hash must be escaped in `.env.local`.**
