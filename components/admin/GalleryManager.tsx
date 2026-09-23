@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { uploadImage, UploadError } from "@/lib/upload-client";
+import { describe, uploadImage, UploadError } from "@/lib/upload-client";
 import { addProjectImageAction, deleteProjectImageAction } from "@/lib/actions";
 import type { ProjectImage } from "@/types/database";
 
@@ -15,6 +15,7 @@ export default function GalleryManager({
   images: ProjectImage[];
 }) {
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -25,7 +26,7 @@ export default function GalleryManager({
     setError("");
     try {
       // Goes browser → Vercel Blob directly; see lib/upload-client.ts.
-      const url = await uploadImage(file);
+      const url = await uploadImage(file, (p) => setStatus(describe(p)));
       // Hand the URL to the server action via its hidden input.
       if (urlRef.current) urlRef.current.value = url;
       formRef.current?.requestSubmit();
@@ -84,7 +85,7 @@ export default function GalleryManager({
         }}
         className="mt-5 block font-body text-xs text-muted file:mr-3 file:cursor-pointer file:rounded-sm file:border-0 file:bg-ink file:px-3 file:py-1.5 file:font-body file:text-xs file:text-paper hover:file:opacity-85 disabled:opacity-50"
       />
-      {busy && <p className="mt-2 font-body text-xs text-muted">Uploading…</p>}
+      {busy && <p className="mt-2 font-body text-xs text-muted">{status || "Uploading…"}</p>}
       {error && <p className="mt-2 font-body text-xs text-red">{error}</p>}
     </div>
   );

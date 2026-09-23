@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
-import { uploadImage, UploadError } from "@/lib/upload-client";
+import { describe, uploadImage, UploadError } from "@/lib/upload-client";
 
 interface ImageUploadFieldProps {
   label: string;
@@ -24,6 +24,7 @@ export default function ImageUploadField({
 }: ImageUploadFieldProps) {
   const [url, setUrl] = useState(defaultValue ?? "");
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,7 +33,7 @@ export default function ImageUploadField({
     setError("");
     try {
       // Goes browser → Vercel Blob directly; see lib/upload-client.ts.
-      setUrl(await uploadImage(file));
+      setUrl(await uploadImage(file, (p) => setStatus(describe(p))));
     } catch (caught) {
       setError(caught instanceof UploadError ? caught.message : "Upload failed.");
     } finally {
@@ -73,7 +74,7 @@ export default function ImageUploadField({
             className="block w-full font-body text-xs text-muted file:mr-3 file:cursor-pointer file:rounded-sm file:border-0 file:bg-ink file:px-3 file:py-1.5 file:font-body file:text-xs file:text-paper hover:file:opacity-85 disabled:opacity-50"
           />
 
-          {busy && <p className="mt-2 font-body text-xs text-muted">Uploading…</p>}
+          {busy && <p className="mt-2 font-body text-xs text-muted">{status || "Uploading…"}</p>}
           {error && <p className="mt-2 font-body text-xs text-red">{error}</p>}
           {hint && !error && <p className="mt-2 font-body text-xs text-muted">{hint}</p>}
 

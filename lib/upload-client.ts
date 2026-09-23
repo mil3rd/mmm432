@@ -1,35 +1,65 @@
 "use client";
 
 import { upload } from "@vercel/blob/client";
+import { shrinkImage } from "./shrink-image";
 
 // Keep in sync with MAX_UPLOAD_BYTES in app/api/upload/route.ts. Not imported
 // from there: this file is bundled into the browser and must not pull in the
 // server-only auth module that route imports.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+// Anything still this big after shrinking (a huge PNG, say) goes up in
+// parallel parts instead of one long request.
+const MULTIPART_OVER_BYTES = 5 * 1024 * 1024;
+
 export class UploadError extends Error {}
+
+export type UploadStage = "shrinking" | "uploading";
+
+export interface UploadProgress {
+  stage: UploadStage;
+  /** bytes that will actually be sent (known once shrinking is done) */
+  bytes: number;
+}
 
 // Sends an image straight from the browser to Vercel Blob and returns its
 // public URL. /api/upload only issues the token, so this is not subject to
 // Vercel's 4.5MB request-body limit on serverless functions.
-export async function uploadImage(file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) {
+//
+// The image is shrunk in the browser first (see shrink-image.ts); that is
+// what makes uploads fast. The 10MB limit applies to what is actually sent.
+export async function uploadImage(
+  original: File,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<string> {
+  if (!original.type.startsWith("image/")) {
     throw new UploadError("That file isn't an image.");
   }
+
+  onProgress?.({ stage: "shrinking", bytes: original.size });
+  const { file } = await shrinkImage(original);
+
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new UploadError("That image is over 10MB. Export it smaller and try again.");
+    throw new UploadError("That image is over 10MB even after shrinking. Export it smaller and try again.");
   }
+  onProgress?.({ stage: "uploading", bytes: file.size });
 
   try {
     const blob = await upload(`portfolio/${Date.now()}-${file.name}`, file, {
       access: "public",
       handleUploadUrl: "/api/upload",
       contentType: file.type,
+      multipart: file.size > MULTIPART_OVER_BYTES,
     });
     return blob.url;
   } catch (error) {
     throw new UploadError(await explain(error));
   }
+}
+
+export function describe(progress: UploadProgress): string {
+  const mb = (progress.bytes / (1024 * 1024)).toFixed(1);
+  return progress.stage === "shrinking" ? "Shrinking image…" : `Uploading ${mb} MB…`;
 }
 
 // The SDK collapses every non-2xx from /api/upload into one generic message,
