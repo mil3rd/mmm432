@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { uploadImage, UploadError } from "@/lib/upload-client";
 
 interface ImageUploadFieldProps {
   label: string;
@@ -29,29 +30,11 @@ export default function ImageUploadField({
   async function upload(file: File) {
     setBusy(true);
     setError("");
-
-    // Vercel Blob's own limit is far higher, but a portfolio image has no
-    // business being this big and the failure is nicer to catch here.
-    if (file.size > 10 * 1024 * 1024) {
-      setError("That image is over 10MB. Export it smaller and try again.");
-      setBusy(false);
-      return;
-    }
-
     try {
-      const body = new FormData();
-      body.append("file", file);
-
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = await response.json();
-
-      if (!response.ok) {
-        setError(result.error ?? "Upload failed.");
-        return;
-      }
-      setUrl(result.url);
-    } catch {
-      setError("Upload failed — check your connection and try again.");
+      // Goes browser → Vercel Blob directly; see lib/upload-client.ts.
+      setUrl(await uploadImage(file));
+    } catch (caught) {
+      setError(caught instanceof UploadError ? caught.message : "Upload failed.");
     } finally {
       setBusy(false);
       // Let the same file be picked again after an error.

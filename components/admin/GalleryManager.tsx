@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { uploadImage, UploadError } from "@/lib/upload-client";
 import { addProjectImageAction, deleteProjectImageAction } from "@/lib/actions";
 import type { ProjectImage } from "@/types/database";
 
@@ -23,20 +24,13 @@ export default function GalleryManager({
     setBusy(true);
     setError("");
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = await response.json();
-
-      if (!response.ok) {
-        setError(result.error ?? "Upload failed.");
-        return;
-      }
+      // Goes browser → Vercel Blob directly; see lib/upload-client.ts.
+      const url = await uploadImage(file);
       // Hand the URL to the server action via its hidden input.
-      if (urlRef.current) urlRef.current.value = result.url;
+      if (urlRef.current) urlRef.current.value = url;
       formRef.current?.requestSubmit();
-    } catch {
-      setError("Upload failed — check your connection and try again.");
+    } catch (caught) {
+      setError(caught instanceof UploadError ? caught.message : "Upload failed.");
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
